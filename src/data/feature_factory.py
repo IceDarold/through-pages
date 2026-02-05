@@ -3,8 +3,12 @@ import numpy as np
 import os
 import argparse
 import re
+import tqdm
+import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
+from models.multi_interest import MultiInterestEncoder
 
 def load_data(data_dir, exp_dir):
     print("Loading data for feature engineering...")
@@ -105,44 +109,57 @@ def generate_interaction_features(pairs, interactions, items, exp_dir):
     user_book_seen['ui_book_seen'] = 1
     pairs = pairs.merge(user_book_seen, on=['user_id', 'book_id'], how='left').fillna(0)
 
-    # 4. Multi-Interest Vector Similarity
-    # Paths for Kaggle
     interests_path = os.path.join(exp_dir, "user_interests.npy")
     embs_path = os.path.join(exp_dir, "item_embeddings.parquet")
+    model_path = os.path.join(exp_dir.replace("data_v1", "models_v1"), "best_multi_interest.pth")
     
     # Check alternate Kaggle location
     if not os.path.exists(interests_path):
         interests_path = "/kaggle/input/though-pages/user_interests.npy"
     if not os.path.exists(embs_path):
         embs_path = "/kaggle/input/though-pages/item_embeddings.parquet"
+    if not os.path.exists(model_path):
+        model_path = "/kaggle/working/through-pages/experiments/models_v1/best_multi_interest.pth"
 
-    if os.path.exists(interests_path) and os.path.exists(embs_path):
+    if os.path.exists(interests_path) and os.path.exists(embs_path) and os.path.exists(model_path):
         print("Calculating Multi-Interest Similarity Scores...")
         user_data = np.load(interests_path, allow_pickle=True).item()
         user_id_to_idx = {uid: i for i, uid in enumerate(user_data['user_ids'])}
-        user_interests = user_data['interests'] # [N, 6, D]
+        user_interests = user_data['interests'] # [N, 6, 256]
         
         emb_df = pd.read_parquet(embs_path)
         item_id_to_idx = {eid: i for i, eid in enumerate(emb_df['edition_id'])}
-        item_embs = emb_df.drop(columns=['edition_id']).values # [M, D]
+        item_embs_raw = emb_df.drop(columns=['edition_id']).values # [M, 768]
         
-        # We'll calculate similarity for each pair. For 200*5000 pairs, it's ~1M calculations.
-        # Optimized vectorized approach:
-        unique_users = pairs['user_id'].unique()
-        unique_items = pairs['edition_id'].unique()
+        # Load model to get the projector
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = MultiInterestEncoder(item_emb_dim=768, d_model=256).to(device)
+        model.load_state_dict(torch.load(model_path, map_location=device))
+        model.eval()
         
-        # Pre-filter only relevant embeddings and interests to save memory
-        # [Implementation details omitted for brevity, using a simpler loop for robustness]
-        
+        # Project all item embeddings to 256-D
+        print("Projecting item embeddings to 256-D...")
+        with torch.no_grad():
+            item_embs_tensor = torch.from_numpy(item_embs_raw).float().to(device)
+            # Project in chunks to avoid OOM
+            item_embs_proj = []
+            chunk_size = 10000
+            for k in range(0, len(item_embs_tensor), chunk_size):
+                chunk = item_embs_tensor[k:k+chunk_size]
+                proj = model.item_projector(chunk)
+                proj = F.normalize(proj, p=2, dim=-1)
+                item_embs_proj.append(proj.cpu().numpy())
+            item_embs = np.concatenate(item_embs_proj, axis=0) # [M, 256]
+
         # Result buffers
         max_sims = []
         
         for idx_row, row in tqdm(pairs.iterrows(), total=len(pairs), desc="Sim Calculation"):
             uid, eid = row['user_id'], row['edition_id']
             if uid in user_id_to_idx and eid in item_id_to_idx:
-                u_vecs = user_interests[user_id_to_idx[uid]] # [6, D]
-                i_vec = item_embs[item_id_to_idx[eid]]      # [D]
-                # Cosine similarity (vecs are already L2 normalized by the model)
+                u_vecs = user_interests[user_id_to_idx[uid]] # [6, 256]
+                i_vec = item_embs[item_id_to_idx[eid]]      # [256]
+                # Cosine similarity
                 sims = np.dot(u_vecs, i_vec)
                 max_sims.append(np.max(sims))
             else:
