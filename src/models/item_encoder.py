@@ -55,8 +55,14 @@ if __name__ == "__main__":
     parser.add_argument("--input", type=str, default='experiments/data_v1/item_features.parquet')
     parser.add_argument("--output", type=str, default='experiments/data_v1/item_embeddings.parquet')
     parser.add_argument("--batch_size", type=int, default=128)
+    parser.add_argument("--force", action="store_true", help="Force re-encoding even if cached embeddings exist")
     args = parser.parse_args()
     
+    cached_path = "/kaggle/input/though-pages/item_embeddings.parquet"
+    if not args.force and os.path.exists(cached_path):
+        print(f"Found cached embeddings at {cached_path}. Skipping encoding. Use --force to regenerate.")
+        raise SystemExit(0)
+
     # Create directory if doesn't exist
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     

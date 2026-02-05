@@ -45,8 +45,8 @@ def create_time_split(df, val_days=14):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", default="/kaggle/input/though-pages/data")
-    ap.add_argument("--submit-dir", default="/kaggle/input/though-pages/submit")
+    ap.add_argument("--data-dir", default="/kaggle/input/though-pages")
+    ap.add_argument("--submit-dir", default="/kaggle/input/though-pages")
     ap.add_argument("--out-dir", default="/kaggle/working/through-pages/experiments/data_v1")
     ap.add_argument("--val-days", type=int, default=14)
     args = ap.parse_args()

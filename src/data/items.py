@@ -3,7 +3,7 @@ import os
 
 import pandas as pd
 
-def create_item_features(data_dir="/kaggle/input/though-pages/data", out_dir="/kaggle/working/through-pages/experiments/data_v1"):
+def create_item_features(data_dir="/kaggle/input/though-pages", out_dir="/kaggle/working/through-pages/experiments/data_v1"):
     print("Loading raw item data...")
     editions = pd.read_csv(os.path.join(data_dir, "editions.csv"))
     authors = pd.read_csv(os.path.join(data_dir, "authors.csv"))
@@ -30,7 +30,7 @@ def create_item_features(data_dir="/kaggle/input/though-pages/data", out_dir="/k
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", default="/kaggle/input/though-pages/data")
+    ap.add_argument("--data-dir", default="/kaggle/input/though-pages")
     ap.add_argument("--out-dir", default="/kaggle/working/through-pages/experiments/data_v1")
     args = ap.parse_args()
     create_item_features(data_dir=args.data_dir, out_dir=args.out_dir)
