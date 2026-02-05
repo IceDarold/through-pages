@@ -73,25 +73,25 @@ def extract_volume(title):
         return int(match.group(1))
     return 1 # Default to 1 if not specified
 
-def generate_interaction_features(pairs, interactions, items, user_interests=None, item_embs=None):
+def generate_interaction_features(pairs, interactions, items, exp_dir):
     """
     pairs: DataFrame with [user_id, edition_id]
     """
     print("Generating User-Item Interaction Features...")
     
     # 0. Series/Volume Extraction
-    items['volume'] = items['title'].apply(extract_volume)
+    if 'volume' not in items.columns:
+        items['volume'] = items['title'].apply(extract_volume)
     
     # 1. Author Affinity: How many times user read this author
     user_author_history = interactions.merge(items[['edition_id', 'author_id']], on='edition_id')
     user_author_counts = user_author_history.groupby(['user_id', 'author_id']).size().reset_index(name='ui_author_count')
     
-    pairs = pairs.merge(items[['edition_id', 'author_id', 'genres', 'format_id', 'volume', 'title']], on='edition_id', how='left')
+    pairs = pairs.merge(items[['edition_id', 'author_id', 'genres', 'format_id', 'volume', 'title', 'book_id']], on='edition_id', how='left')
     pairs = pairs.merge(user_author_counts, on=['user_id', 'author_id'], how='left').fillna(0)
     
     # 2. Sequential Logic: Distance from last volumes of authors
     print("Calculating Sequential Volume Distance...")
-    # Find max volume read per author by user
     user_last_volumes = user_author_history.merge(items[['edition_id', 'volume']], on='edition_id')
     user_last_volumes = user_last_volumes.groupby(['user_id', 'author_id'])['volume'].max().reset_index()
     user_last_volumes.columns = ['user_id', 'author_id', 'u_max_volume_author']
@@ -99,48 +99,95 @@ def generate_interaction_features(pairs, interactions, items, user_interests=Non
     pairs = pairs.merge(user_last_volumes, on=['user_id', 'author_id'], how='left').fillna(0)
     pairs['ui_volume_diff'] = pairs['volume'] - pairs['u_max_volume_author']
     
-    # 3. Genre Affinity (Dice Coefficient / Overlap)
-    print("Calculating Genre Affinity...")
-    user_genres = interactions.merge(items[['edition_id', 'genres']], on='edition_id')
-    # This is a bit slow, but let's do a simplified version
-    # Expand genres to one-hot or use Jaccard
+    # 3. Item Seen Check
+    user_book_history = interactions.merge(items[['edition_id', 'book_id']], on='edition_id')
+    user_book_seen = user_book_history[['user_id', 'book_id']].drop_duplicates()
+    user_book_seen['ui_book_seen'] = 1
+    pairs = pairs.merge(user_book_seen, on=['user_id', 'book_id'], how='left').fillna(0)
+
+    # 4. Multi-Interest Vector Similarity
+    # Paths for Kaggle
+    interests_path = os.path.join(exp_dir, "user_interests.npy")
+    embs_path = os.path.join(exp_dir, "item_embeddings.parquet")
     
-    # Vectorizing genres
-    # We can pre-calculate user genre preference vector
-    # [TO BE IMPLEMENTED IN PRODUCTION SCALE]
+    # Check alternate Kaggle location
+    if not os.path.exists(interests_path):
+        interests_path = "/kaggle/input/though-pages/user_interests.npy"
+    if not os.path.exists(embs_path):
+        embs_path = "/kaggle/input/though-pages/item_embeddings.parquet"
+
+    if os.path.exists(interests_path) and os.path.exists(embs_path):
+        print("Calculating Multi-Interest Similarity Scores...")
+        user_data = np.load(interests_path, allow_pickle=True).item()
+        user_id_to_idx = {uid: i for i, uid in enumerate(user_data['user_ids'])}
+        user_interests = user_data['interests'] # [N, 6, D]
+        
+        emb_df = pd.read_parquet(embs_path)
+        item_id_to_idx = {eid: i for i, eid in enumerate(emb_df['edition_id'])}
+        item_embs = emb_df.drop(columns=['edition_id']).values # [M, D]
+        
+        # We'll calculate similarity for each pair. For 200*5000 pairs, it's ~1M calculations.
+        # Optimized vectorized approach:
+        unique_users = pairs['user_id'].unique()
+        unique_items = pairs['edition_id'].unique()
+        
+        # Pre-filter only relevant embeddings and interests to save memory
+        # [Implementation details omitted for brevity, using a simpler loop for robustness]
+        
+        # Result buffers
+        max_sims = []
+        
+        for idx_row, row in tqdm(pairs.iterrows(), total=len(pairs), desc="Sim Calculation"):
+            uid, eid = row['user_id'], row['edition_id']
+            if uid in user_id_to_idx and eid in item_id_to_idx:
+                u_vecs = user_interests[user_id_to_idx[uid]] # [6, D]
+                i_vec = item_embs[item_id_to_idx[eid]]      # [D]
+                # Cosine similarity (vecs are already L2 normalized by the model)
+                sims = np.dot(u_vecs, i_vec)
+                max_sims.append(np.max(sims))
+            else:
+                max_sims.append(0.0)
+        
+        pairs['ui_max_interest_sim'] = max_sims
 
     return pairs
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exp-dir", default="experiments/data_v1")
+    parser.add_argument("--exp-dir", default="/kaggle/working/through-pages/experiments/data_v1")
+    parser.add_argument("--data-dir", default="/kaggle/input/though-pages")
     parser.add_argument("--mode", choices=['train', 'infer'], default='infer')
     args = parser.parse_args()
     
-    interactions, items, embeddings = load_data('data', args.exp_dir)
+    interactions, items, embeddings = load_data(args.data_dir, args.exp_dir)
     
     user_stats = build_user_features(interactions)
     item_stats = build_item_features(interactions, items)
     
     if args.mode == 'infer':
         print("Processing Candidates for Inference...")
-        pairs = pd.read_csv('submit/candidates.csv')
+        pairs_path = os.path.join(args.data_dir, "candidates.csv")
+        if not os.path.exists(pairs_path):
+            pairs_path = "submit/candidates.csv" # local fallback
+        pairs = pd.read_csv(pairs_path)
     else:
-        # For training, we need to generate pairs (target + negatives)
-        # This will be handled in a separate step to keepFE clean
-        print("Training mode FE not implemented here yet.")
+        # For training, we need a separate script to generate pairs with labels
+        print("Please use make_reranker_train_data.py first.")
         return
 
-    # Merge basic features
+    # Merge stats
     df = pairs.merge(user_stats, on='user_id', how='left')
-    df = df.merge(item_stats.drop(columns=['author_id', 'genres', 'format_id', 'book_id'], errors='ignore'), on='edition_id', how='left')
+    df = df.merge(item_stats.drop(columns=['author_id', 'genres', 'format_id', 'book_id', 'volume', 'title'], errors='ignore'), on='edition_id', how='left')
     
-    # Generate complex interaction features
-    df = generate_interaction_features(df, interactions, items)
+    # Interaction Features (Volume, Author affinity, Vector Sim)
+    df = generate_interaction_features(df, interactions, items, args.exp_dir)
     
     output_path = os.path.join(args.exp_dir, f"features_{args.mode}.parquet")
     df.to_parquet(output_path, index=False)
     print(f"Features saved to {output_path}")
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()

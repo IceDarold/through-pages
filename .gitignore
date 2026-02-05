@@ -14,3 +14,7 @@
 
 # PDFs
 *.pdf
+
+# submissions outputs
+/submissions/
+*.csv

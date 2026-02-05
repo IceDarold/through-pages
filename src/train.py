@@ -87,6 +87,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--resume", type=str, default=None, help="Path to checkpoint to resume from")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -112,6 +113,13 @@ def main():
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
+    start_epoch = 0
+    if args.resume and os.path.exists(args.resume):
+        print(f"Resuming from checkpoint: {args.resume}")
+        model.load_state_dict(torch.load(args.resume, map_location=device))
+        # Optional: you could try to guess the start_epoch from the file or just start from 0 with loaded weights
+        # For simplicity, we'll just start the loop and let the scheduler do its work
+    
     best_val_loss = float('inf')
     
     for epoch in range(args.epochs):
