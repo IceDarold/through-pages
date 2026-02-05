@@ -29,7 +29,8 @@ def generate_user_vectors(model, loader, device, output_path):
             # Get interests [1, K, D]
             interests = model(hist_embs, relevance, formats, mask)
             
-            user_id = loader.dataset.sequences[i]['user_id']
+            # Use 'samples' which is the new name in InteractionDataset
+            user_id = loader.dataset.samples[i]['user_id']
             user_ids.append(user_id)
             interest_vectors.append(interests.cpu().numpy()[0])
             
@@ -52,9 +53,8 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Dataset (we need it for metadata mapping)
-    ds = InteractionDataset(args.sequences, args.emb_path, args.feature_path)
-    # We dont need weights but just the dataset structure
+    # Dataset (FORCE mode='infer' to get 1 sample per user)
+    ds = InteractionDataset(args.sequences, args.emb_path, args.feature_path, mode='infer')
     loader = DataLoader(ds, batch_size=1, shuffle=False)
 
     # Model
