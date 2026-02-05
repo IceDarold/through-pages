@@ -1,7 +1,9 @@
-import pandas as pd
-import numpy as np
+import argparse
 import os
 from datetime import timedelta
+
+import numpy as np
+import pandas as pd
 
 def preprocess_interactions(df):
     """
@@ -42,22 +44,30 @@ def create_time_split(df, val_days=14):
     return train_df, val_df
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--submit-dir", default="submit")
+    ap.add_argument("--out-dir", default="experiments/data_v1")
+    ap.add_argument("--val-days", type=int, default=14)
+    args = ap.parse_args()
+
     print("Loading data...")
-    interactions = pd.read_csv('data/interactions.csv')
-    editions = pd.read_csv('data/editions.csv')
-    targets_users = pd.read_csv('submit/targets.csv')['user_id'].unique()
+    interactions = pd.read_csv(os.path.join(args.data_dir, "interactions.csv"))
+    editions = pd.read_csv(os.path.join(args.data_dir, "editions.csv"))
+    targets_users = pd.read_csv(os.path.join(args.submit_dir, "targets.csv"))["user_id"].unique()
     
     print("Preprocessing interactions...")
     df = preprocess_interactions(interactions)
     
     # Save the whole cleaned interactions for features
-    df.to_parquet('experiments/data_v1/clean_interactions.parquet', index=False)
+    os.makedirs(args.out_dir, exist_ok=True)
+    df.to_parquet(os.path.join(args.out_dir, "clean_interactions.parquet"), index=False)
     
     print("Creating chronological split...")
-    train_df, val_df = create_time_split(df)
+    train_df, val_df = create_time_split(df, val_days=args.val_days)
     
-    train_df.to_parquet('experiments/data_v1/train_interactions.parquet', index=False)
-    val_df.to_parquet('experiments/data_v1/val_interactions.parquet', index=False)
+    train_df.to_parquet(os.path.join(args.out_dir, "train_interactions.parquet"), index=False)
+    val_df.to_parquet(os.path.join(args.out_dir, "val_interactions.parquet"), index=False)
     
     print("Phase 0 Preprocessing Complete.")
 

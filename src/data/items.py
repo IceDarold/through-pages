@@ -1,12 +1,14 @@
-import pandas as pd
+import argparse
 import os
 
-def create_item_features():
+import pandas as pd
+
+def create_item_features(data_dir="data", out_dir="experiments/data_v1"):
     print("Loading raw item data...")
-    editions = pd.read_csv('data/editions.csv')
-    authors = pd.read_csv('data/authors.csv')
-    book_genres = pd.read_csv('data/book_genres.csv')
-    genres = pd.read_csv('data/genres.csv')
+    editions = pd.read_csv(os.path.join(data_dir, "editions.csv"))
+    authors = pd.read_csv(os.path.join(data_dir, "authors.csv"))
+    book_genres = pd.read_csv(os.path.join(data_dir, "book_genres.csv"))
+    genres = pd.read_csv(os.path.join(data_dir, "genres.csv"))
     
     # Merge authors
     print("Merging authors...")
@@ -22,8 +24,13 @@ def create_item_features():
     editions = editions.merge(genres_agg, on='book_id', how='left')
     
     print(f"Final Item catalog size: {len(editions)}")
-    editions.to_parquet('experiments/data_v1/item_features.parquet', index=False)
+    os.makedirs(out_dir, exist_ok=True)
+    editions.to_parquet(os.path.join(out_dir, "item_features.parquet"), index=False)
     print("Item features saved.")
 
 if __name__ == "__main__":
-    create_item_features()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--out-dir", default="experiments/data_v1")
+    args = ap.parse_args()
+    create_item_features(data_dir=args.data_dir, out_dir=args.out_dir)
