@@ -94,8 +94,8 @@ def main():
     print(f"Using device: {device}")
 
     # Datasets
-    train_ds = InteractionDataset(args.train_seq, args.emb_path, args.feature_path)
-    val_ds = InteractionDataset(args.val_seq, args.emb_path, args.feature_path)
+    train_ds = InteractionDataset(args.train_seq, args.emb_path, args.feature_path, mode='train')
+    val_ds = InteractionDataset(args.val_seq, args.emb_path, args.feature_path, mode='infer')
     
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=0)
