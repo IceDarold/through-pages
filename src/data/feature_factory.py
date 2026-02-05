@@ -200,8 +200,9 @@ def main():
     df = pairs.merge(user_stats, on='user_id', how='left')
     df = df.merge(item_stats.drop(columns=['author_id', 'genres', 'format_id', 'book_id', 'volume', 'title'], errors='ignore'), on='edition_id', how='left')
     
-    # Interaction Features (Volume, Author affinity, Vector Sim)
-    df = generate_interaction_features(df, interactions, items, args.exp_dir)
+    # FINAL CLEANUP: Drop text columns that cause Parquet schema issues
+    text_cols = ['title', 'genres', 'description', 'book_id', 'author_id']
+    df = df.drop(columns=[c for c in text_cols if c in df.columns])
     
     output_path = os.path.join(args.exp_dir, f"features_{args.mode}.parquet")
     df.to_parquet(output_path, index=False)
