@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import argparse
@@ -19,19 +20,23 @@ def train_epoch(model, loader, optimizer, device, temperature=0.07):
         relevance = batch['hist_relevance'].to(device)
         formats = batch['hist_formats'].to(device)
         mask = batch['mask'].to(device)
-        target_emb = batch['target_emb'].to(device) # [B, D]
+        target_emb = batch['target_emb'].to(device) # [B, D_raw]
         
         optimizer.zero_grad()
         
         # Forward: Get user interests [B, K, D]
         # We assume targets are already normalized in the loss calculation
         user_interests = model(hist_embs, relevance, formats, mask)
+
+        # Project targets into the same space as user_interests
+        target_proj = model.item_projector(target_emb)
+        target_proj = F.normalize(target_proj, p=2, dim=-1)
         
         # In-batch Negative Sampling Loss
         # 1. Similarity of all K interests with all targets in batch
         # interests: [B, K, D], targets: [N, D]
         # scores: [B, K, N]
-        scores = torch.einsum('bkd,nd->bkn', user_interests, target_emb)
+        scores = torch.einsum('bkd,nd->bkn', user_interests, target_proj)
         
         # 2. For each user-target pair (within or outside batch), select the best interest
         # resultant_scores: [B, N]
@@ -62,7 +67,9 @@ def validate(model, loader, device):
             target_emb = batch['target_emb'].to(device)
             
             user_interests = model(hist_embs, relevance, formats, mask)
-            scores = torch.einsum('bkd,nd->bkn', user_interests, target_emb)
+            target_proj = model.item_projector(target_emb)
+            target_proj = F.normalize(target_proj, p=2, dim=-1)
+            scores = torch.einsum('bkd,nd->bkn', user_interests, target_proj)
             resultant_scores, _ = torch.max(scores, dim=1)
             labels = torch.arange(resultant_scores.size(0)).to(device)
             loss = nn.CrossEntropyLoss()(resultant_scores / 0.07, labels)

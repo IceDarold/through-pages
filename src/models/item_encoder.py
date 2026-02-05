@@ -59,9 +59,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     cached_path = "/kaggle/input/though-pages/item_embeddings.parquet"
-    if not args.force and os.path.exists(cached_path):
-        print(f"Found cached embeddings at {cached_path}. Skipping encoding. Use --force to regenerate.")
-        raise SystemExit(0)
+    if not args.force:
+        if os.path.exists(cached_path):
+            print(f"Found cached embeddings at {cached_path}. Skipping encoding. Use --force to regenerate.")
+            raise SystemExit(0)
+        if os.path.exists(args.output):
+            print(f"Found embeddings at {args.output}. Skipping encoding. Use --force to regenerate.")
+            raise SystemExit(0)
 
     # Create directory if doesn't exist
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
