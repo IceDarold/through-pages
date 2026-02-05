@@ -196,16 +196,30 @@ def main():
         print("Please use make_reranker_train_data.py first.")
         return
 
-    # Merge stats
-    df = pairs.merge(user_stats, on='user_id', how='left')
-    df = df.merge(item_stats.drop(columns=['author_id', 'genres', 'format_id', 'book_id', 'volume', 'title'], errors='ignore'), on='edition_id', how='left')
+    # Interaction Features (Volume, Author affinity, Vector Sim)
+    df = generate_interaction_features(df, interactions, items, args.exp_dir)
     
-    # FINAL CLEANUP: Drop text columns that cause Parquet schema issues
-    text_cols = ['title', 'genres', 'description', 'book_id', 'author_id']
-    df = df.drop(columns=[c for c in text_cols if c in df.columns])
+    # FINAL ROBUST CLEANUP: Keep only numeric features + IDs
+    # This prevents ANY PyArrow schema issues with titles, authors, descriptions, etc.
+    cols_to_keep = ['user_id', 'edition_id', 'label']
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    final_cols = list(set(cols_to_keep + numeric_cols))
+    final_cols = [c for c in final_cols if c in df.columns]
+    
+    df = df[final_cols].copy()
+    
+    # Optional: Fill NaNs with 0 to be safe for LightGBM
+    df = df.fillna(0)
+    
+    # Ensure all features are float32 to avoid Arrow type complexity
+    for col in df.columns:
+        if col not in ['user_id', 'edition_id', 'label']:
+            df[col] = df[col].astype(np.float32)
     
     output_path = os.path.join(args.exp_dir, f"features_{args.mode}.parquet")
     df.to_parquet(output_path, index=False)
+    print(f"Features saved to {output_path}")
     print(f"Features saved to {output_path}")
 
 if __name__ == "__main__":
