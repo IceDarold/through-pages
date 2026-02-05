@@ -1,6 +1,7 @@
 import os
 import math
 from dataclasses import dataclass
+from typing import Optional
 from datetime import datetime
 from collections import defaultdict, Counter
 
@@ -30,7 +31,7 @@ class Mappings:
 @dataclass
 class Split:
     train_df: pd.DataFrame
-    val_df: pd.DataFrame | None
+    val_df: Optional[pd.DataFrame]
 
 
 def log(msg: str):
@@ -191,7 +192,7 @@ def diversity_at_20(ranked_items: list, rel_u: dict, ed2genres: dict) -> float:
     return 0.5 * coverage + 0.5 * ild
 
 
-def score_submission(pred_df: pd.DataFrame, val_df: pd.DataFrame, ed2genres: dict) -> tuple[float, float, float]:
+def score_submission(pred_df: pd.DataFrame, val_df: pd.DataFrame, ed2genres: dict) -> tuple:
     rel = build_relevance(val_df)
     users = pred_df["user_id"].unique()
 
@@ -367,6 +368,7 @@ def build_submission(cand_scored: pd.DataFrame, ed2genres: dict, topk=20, lam=0.
 
 
 def save_submission(submission: pd.DataFrame, out_path: str):
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     submission.to_csv(out_path, index=False)
 
     ok_20 = submission.groupby("user_id").size().eq(20).all()
