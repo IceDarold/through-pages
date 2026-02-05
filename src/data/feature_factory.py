@@ -6,8 +6,12 @@ import re
 import tqdm
 import torch
 import torch.nn.functional as F
+import sys
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+# Add src to path for absolute imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from models.multi_interest import MultiInterestEncoder
 
 def load_data(data_dir, exp_dir):
@@ -202,9 +206,6 @@ def main():
     output_path = os.path.join(args.exp_dir, f"features_{args.mode}.parquet")
     df.to_parquet(output_path, index=False)
     print(f"Features saved to {output_path}")
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
