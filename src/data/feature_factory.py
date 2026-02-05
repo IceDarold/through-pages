@@ -192,10 +192,18 @@ def main():
             pairs_path = "submit/candidates.csv" # local fallback
         pairs = pd.read_csv(pairs_path)
     else:
-        # For training, we need a separate script to generate pairs with labels
-        print("Please use make_reranker_train_data.py first.")
-        return
+        print("Processing Pairs for Training...")
+        pairs_path = os.path.join(args.exp_dir, "train_reranker_pairs.csv")
+        if not os.path.exists(pairs_path):
+            print("Please use make_reranker_train_data.py first.")
+            return
+        pairs = pd.read_csv(pairs_path)
 
+    # Initial merge with stats to create 'df'
+    print("Merging global stats...")
+    df = pairs.merge(user_stats, on='user_id', how='left')
+    df = df.merge(item_stats.drop(columns=['author_id', 'genres', 'format_id', 'book_id', 'volume', 'title'], errors='ignore'), on='edition_id', how='left')
+    
     # Interaction Features (Volume, Author affinity, Vector Sim)
     df = generate_interaction_features(df, interactions, items, args.exp_dir)
     
