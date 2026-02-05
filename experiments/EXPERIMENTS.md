@@ -33,3 +33,11 @@
 - Local Diversity@20: 0.058133
 - Local Score: 0.051052
 - Public LB score: 0.0687
+
+- Model: Multi-Interest User Vectors (25 epochs) + Heuristic Reranker (Series Sequel + Author Match + Similarity)
+- Notes: Neural Transformer trained with sliding window (val loss ~4.3). Reranker used fallback logic (Phase 3 features without LightGBM).
+- Public LB score: 0.3071
+
+- Model: LightGBM Reranker (Standard LambdaRank)
+- Notes: Trained on random negatives (N=100). Replaced heuristic with model scores. 
+- Public LB score: 0.1563 (FAILED - likely due to easy negatives in training vs hard candidates in test).
